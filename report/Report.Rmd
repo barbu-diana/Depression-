@@ -1,0 +1,237 @@
+---
+title: "Feelings of Depression and Moral Values"
+author: "Diana Miruna Barbu"
+date: "19/06/2026"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: readable
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+
+library(tidyverse)
+library(lme4)
+library(sjPlot)
+library(modelsummary)
+library(readxl)
+
+# Change this path if the dataset is stored somewhere else.
+data_path <- "~/Downloads/ESS11e04_1/ESS11e04_1.xlsx"
+```
+
+# Research Question and Hypotheses
+
+Is feeling depressed associated with moral values, such as the importance placed on creativity, having money, and following rules?
+Depression is a very common mood disorder that can severely impair people’s everyday life and that currently affects a large share of the global population. Experts have long asked themselves if there is any association between depression and different moral values that people may be influenced by.
+Evidence found there is a negative relationship between creativity and depression (Lam et al., 2024), suggesting more creative people are less prone to depression.
+Studies have also found that financial stress is positively associated with depression in countries with different levels of income (Guan et al., 2022).
+The Self-Silencing Theory proposes that individuals maintain social approval by suppressing their own feelings, increasing the risk of depression, which is supported by recent results (Jack, 1991; 2026).
+This research allows us to posit that indeed some moral values like importance placed on creativity, money and rules should be examined in relation to feelings of depression.
+H1: Individuals who place high importance on creativity are less likely to experience depression.
+H2: Individuals who place high importance on having money and following rules are more likely to experience depression.
+
+# Data and Variable Operationalization
+
+This study is based on the European Social Survey Round 11 (ESS11) from 2023-2024 which is a cross-national survey that comprises random probability samples of individuals aged at least 15 and households from 31 countries across Europe, with the aim to capture attitudes, perceptions and behaviours in the context of social inequalities in health. Each country sample is multistage or stratified or both and has at least 1500 respondents, at least 800 for countries with population under 2 million.
+The outcome variable is the probability of feeling depressed is_dpr = 1, computed for levels of 3 and 4 from the ordinal fltdpr – Felt depressed, how often past week and is measured on a 4-point scale, from 1 – “None or almost none of the time” to 4 – “All or almost all of the time”.
+The outcome variable was constructed instead of using the original Felt depressed because individuals with depression were extremely few in the population, thus the original variable had very little variation and was, thus, inappropriate for the study.
+The independent variables are: ipcrtiva – Important to think new ideas and be creative, impricha – Important to be rich, have money and expensive things, and ipfrulea – Important to do what is told and follow rules. These variables ask people how much these values are like them and are placed on an ordinal 6-point scale from 1 – “Very much like me” to 6 – “Not like me at all”. These items were inverted for interpretation consistency with the outcome, such that high levels of feeling depressed would be stressed against high levels of importance on creativity, money and rules.
+The moral values variables were scaled for interpretability of the interaction model.
+A categorical control variable was considered for country – cntry to account for country differences and another was considered for gender – nobingnd with options “Man”, “Woman” and “Other” to account for differences between genders.
+The fltdpr variable assesses how often people felt depressed but doesn’t take into account actual diagnostics of depression. 
+Missing values were dropped in order to properly conduct statistical analysis and to not bias the results.
+The dataset is currently available here: https://ess.sikt.no/en/datafile/242aaa39-3bbb-40f5-98bf-bfb1ce53d8ef?tab=0
+
+```{r data-preparation}
+data <- read_excel(data_path)
+
+ess11 <- data %>%
+  select(
+    cntry, nobingnd,
+    fltdpr,
+    ipcrtiva, impricha, ipfrulea
+  ) %>%
+  mutate(
+    fltdpr = if_else(fltdpr > 4, NA_real_, as.numeric(fltdpr)),
+    ipcrtiva = if_else(ipcrtiva > 6, NA_real_, as.numeric(ipcrtiva)),
+    impricha = if_else(impricha > 6, NA_real_, as.numeric(impricha)),
+    ipfrulea = if_else(ipfrulea > 6, NA_real_, as.numeric(ipfrulea)),
+    nobingnd = if_else(nobingnd > 3, NA_real_, as.numeric(nobingnd))
+  ) %>%
+  drop_na() %>%
+  mutate(
+    is_dpr = if_else(fltdpr >= 3, 1, 0),
+    ipcrtiva = 7 - ipcrtiva,
+    impricha = 7 - impricha,
+    ipfrulea = 7 - ipfrulea,
+    z_ipcrtiva = as.numeric(scale(ipcrtiva)),
+    z_impricha = as.numeric(scale(impricha)),
+    z_ipfrulea = as.numeric(scale(ipfrulea)),
+    nobingnd = if_else(nobingnd == 1, 0, 1)
+  )
+```
+
+```{r outcome-distribution, include=FALSE}
+ggplot(ess11, aes(x = factor(is_dpr))) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Being Depressed",
+    x = "Is depressed",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+```{r depression-original-distribution, include=FALSE}
+ggplot(ess11, aes(x = factor(fltdpr))) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Felt Depressed",
+    x = "Felt depressed",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+```{r predictor-distributions, include=FALSE}
+ggplot(ess11, aes(x = factor(ipcrtiva))) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Importance of Creativity",
+    x = "Importance of creativity",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+```{r predictor-distributions-money, include=FALSE}
+ggplot(ess11, aes(x = factor(impricha))) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Importance of Money",
+    x = "Importance of money",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+```{r predictor-distributions-rules, include=FALSE}
+ggplot(ess11, aes(x = factor(ipfrulea))) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Importance of Rules",
+    x = "Importance of rules",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+# Model Choice and Statistical Justification
+
+Three models were fit: the first one is a multivariate logistic regression with predictors importance of creativity, money and rules and the control for gender. This model was fit in order to best capture the probability of feeling depressed, since this was very low across the whole European population with only 7.5% being affected, coming from a binary variable. The second model represents a logistic regression with interactions between gender and all moral values predictors in order to check if there are varying marginal effects of importance of moral values across genders, reflecting that the relationship between some human values and depression may be stronger in women than in men. Finally, a multilevel hierarchical model with varying intercepts and slopes was fit between Felt depressed and all moral values predictors, plus gender, to show that this model is inappropriate due to the very low variation in the outcome and the no variation in the predictors between countries.
+
+```{r models}
+m1 <- glm(
+  is_dpr ~ z_ipcrtiva + z_impricha + z_ipfrulea + nobingnd,
+  data = ess11,
+  family = binomial(link = "logit")
+)
+
+m2 <- glm(
+  is_dpr ~ z_ipcrtiva * nobingnd + z_impricha * nobingnd + z_ipfrulea * nobingnd,
+  data = ess11,
+  family = binomial(link = "logit")
+)
+
+m3 <- lmer(
+  fltdpr ~ ipcrtiva + impricha + ipfrulea + nobingnd +
+    (1 + ipcrtiva + impricha + ipfrulea + nobingnd | cntry),
+  data = ess11
+)
+```
+
+# Results
+
+```{r regression-table, results='asis'}
+modelsummary(
+  list(
+    "Model 1" = m1,
+    "Model 2: Interactions" = m2
+  ),
+  stars = TRUE,
+  statistic = "std.error",
+  gof_omit = "R2 Adj.|AIC|BIC|Log.Lik.|F|RMSE|Num.Obs."
+)
+```
+
+Model 1 shows a statistically significant negative association between the importance of creativity and the probability of feeling depressed. This is consistent with H1. The coefficient for importance of money is not statistically significant, meaning that the analysis does not provide evidence of an association between importance of money and feeling depressed. The coefficient for importance of rules is statistically significant but negative, which is the opposite of the expectation in H2. Gender is also statistically significant, suggesting that women have a higher probability of reporting feelings of depression than men.
+
+Model 2 shows similar relationships but allows the effects of moral values to vary by gender. The interaction between creativity and gender is statistically significant. The interaction between rules and gender is also significant at the 90% confidence level. These interactions suggest that the relationship between moral values and depression differs between men and women.
+
+```{r multilevel-table, results='asis'}
+sjPlot::tab_model(m3)
+```
+
+The third model showed no effects: the estimates for all predictors were 0 or almost 0 and the variance between countries for all independent variables was 0.
+
+```{r predictive-check}
+set.seed(123)
+
+sims <- simulate(m2, nsim = 1000)
+obs_y <- mean(ess11$is_dpr)
+
+pred_check <- tibble(
+  sim = 1:1000,
+  y_hat_mean = map_dbl(sims, mean)
+)
+```
+
+```{r predictive-check-plot, include=FALSE}
+ggplot(pred_check, aes(x = y_hat_mean)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = obs_y, linetype = "dashed", linewidth = 1) +
+  labs(
+    x = "Simulated probabilities of depression",
+    y = "Number of simulations",
+    title = "Predictive checks for probability of depression"
+  ) +
+  theme_minimal()
+```
+
+# Interpretation and Substantive Insights
+
+We consider the second model. The intercept tells us that there is a 5.5% probability of feeling depressed when all the moral values predictors are at their average and the gender category is men.
+The coefficient on importance of creativity divided by 4 tells us that at the mean level of importance of money and rules, while considering men, a one standard deviation change in importance of creativity is associated with a 10% decrease in the probability of feeling depressed. The coefficient on importance of money is not significant. The coefficient on importance of rules divided by 4 tells us that at the mean level of importance of creativity and money, while considering men, a one standard deviation change in importance of money is associated with a 3% decrease in the probability of feeling depressed, which has low magnitude. The coefficient on gender divided by 4 tells us that at the average level of moral values switching to females is associated with a 12% increase in the probability of feeling depressed.
+The interaction term between importance of creativity and gender says that for each additional standard deviation of importance of creativity the value 0.148 is added to the coefficient for gender and by switching from men to women the same value is added to the coefficient for importance of creativity. The interaction term between importance of money and gender is not significant. The interaction term between importance of rules and gender says that for each additional standard deviation of importance of rules the value 0.089 is added to the coefficient for gender and by switching from men to women the same value is added to the coefficient for importance of rules, but this value seems to have low magnitude.
+Overall, our results suggest mild associations between importance of creativity and the probability of feeling depressesed. Our study also suggests that this relationship is stronger for women.
+
+# Limitations and Reflection
+The model is problematic because the outcome variable is very imbalanced since only 7.5% individuals across the whole continent were found to display feelings of depression and the model takes into account all individuals. Given depression is so rare, a study on individuals diagnosed with depression and displaying a wide range of levels of it could be better suited or a study that has a treatment and a control group.
+This study only addresses correlation, therefore further studies need to be done in order to assess causation.
+
+# Bibliography
+Khalil, R., Godde, B. and Karim, A.A. (2019) ‘Relationship Between Creativity and Depression: The Role of Reappraisal and Rumination’, Creativity Research Journal, 31(1), pp. 7–14. Available at: https://doi.org/10.1080/10400419.2019.1568151.
+Guan, N., Guariglia, A., Moore, P., Xu, F. and Al-Janabi, H. (2022) ‘Financial stress and depression in adults: A systematic review’, PLOS ONE, 17(2), e0264041. Available at: https://doi.org/10.1371/journal.pone.0264041.
+Jack, D.C., Brody, L.R. and Sikov, J. (2026), ‘Advancing the Next Generation of Research on Self-Silencing and Depression: A Narrative Review and Synthesis of Three Decades of Research’, Sex Roles, vol. 92, no. 2, pp. 7–38. Available at: https://doi.org/10.1007/s11199-025-01637-8.
+
+# AI Disclosure
+ChatGPT was asked to provide this syntax in order to compute the mean of the simulations used to assess predictive checks: 
+pred_check <- tibble(
+  sim = 1:1000,
+  y_hat_mean = map_dbl(sims, mean),
+)
+Where map_dbl() applies a function to every element of a list and returns a vector, in this case the mean of each simulated sample.
+In addition, it was asked what to include in an R markdown.
